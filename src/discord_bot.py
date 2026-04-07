@@ -54,12 +54,18 @@ async def join(message : discord.Message):
 
     await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
 
+async def leave(message : discord.Message):
+    """
+    Removes bot from a voice channel
+    """
+    print("leave not implemented")
 
 
 commands = {
     "listen" : record,
     "stop" : stop_record,
-    "join" : join
+    "join" : join,
+    "leave" : leave
 }
 
 @client.event
