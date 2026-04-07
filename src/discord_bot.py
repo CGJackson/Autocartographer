@@ -16,12 +16,28 @@ async def on_ready():
     print(f'We have logged in as {client.user}')
 
 async def record(message : discord.Message):
+    """
+    Has the bot start recording a voice channel containing
+    the author of the message, in order to generate a map.
+    """
     print("record not implimented")
 
 async def stop_record(message : discord.Message):
+    """
+    Has the bot stop recording from a channel and
+    generate a map
+    """
+    # Should this require the user giving the command to be the user that started recording?
     print("stop_record not implimented")
 
 async def join(message : discord.Message):
+    """
+    Adds the bot to a voice channel.
+    
+    Either uses a voice channel mentioned in the message or, 
+    if there isn't one, a voice mentioned after the join
+    command
+    """
     if message.channel_mentions:
         for channel in message.channel_mentions:
             if isinstance(channel,discord.VoiceChannel):
