@@ -1,4 +1,5 @@
 import discord
+from discord.ext import voice_recv
 
 
 intents = discord.Intents.default()
@@ -6,7 +7,40 @@ intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-voiceclients = []
+class VoiceChannelDirectory:
+    """
+    Manages a dictionary of the currently active voice clients in different channels.
+
+    channels, and corresponding clients, are added when they connect and removed when
+    they disconnect
+    """
+    def __init__(self):
+        self.voiceclients = {}
+
+    def __contains__(self, item):
+        item in self.voiceclients
+
+    def __getitem__(self, key):
+        return self.voiceclients[key]
+
+    def __iter__(self):
+        return iter(self.voiceclients)
+
+    def __next__(self):
+        return next(self.voiceclients)
+
+    async def connect_to_channel(self,channel):
+        new_voice_client = await channel.connect(self_mute=True,cls=voice_recv.VoiceRecvClient)
+        if channel in self:
+            await self.voiceclients.pop(channel).disconect()
+        self.voiceclients[channel] = new_voice_client
+
+    async def disconect_from_channel(self,channel):
+        await self.voiceclients.pop(channel).disconnect()
+
+
+
+active_voice_channels = VoiceChannelDirectory()
 
 def strip_mention(msg : str):
     return "".join(msg.split(client.user.mention)).strip()
@@ -30,6 +64,7 @@ async def stop_record(message : discord.Message):
     # Should this require the user giving the command to be the user that started recording?
     print("stop_record not implimented")
 
+
 async def join(message : discord.Message):
     """
     Adds the bot to a voice channel.
@@ -41,15 +76,13 @@ async def join(message : discord.Message):
     if message.channel_mentions:
         for channel in message.channel_mentions:
             if isinstance(channel,discord.VoiceChannel):
-                new_voice_client = await channel.connect(self_mute=True)
-                voiceclients.append(new_voice_client)
+                await active_voice_channels.connect_to_channel(channel)
                 return
     content = strip_mention(message.content)
 
     for channel in message.guild.voice_channels:
         if content.startswith("join " + channel.name):
-            new_voice_client = await channel.connect(self_mute=True)
-            voiceclients.append(new_voice_client)
+            await active_voice_channels.connect_to_channel(channel)
             return
 
     await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
@@ -57,8 +90,24 @@ async def join(message : discord.Message):
 async def leave(message : discord.Message):
     """
     Removes bot from a voice channel
+
+    Either uses a voice channel mentioned in the message or, 
+    if there isn't one, a voice mentioned after the leave
+    command
     """
-    print("leave not implemented")
+    if message.channel_mentions:
+        for channel in message.channel_mentions:
+            if isinstance(channel,discord.VoiceChannel) and channel in active_voice_channels:
+                await active_voice_channels.disconect_from_channel(channel)
+                return
+    content = strip_mention(message.content)
+
+    for channel in active_voice_channels:
+        if content.startswith("leave " + channel.name):
+            await active_voice_channels.disconect_from_channel(channel)
+            return
+
+    await message.channel.send("I am sorry. I cannot determine which voice channel you want me to leave.\n It may be that I am not currently connected to the channel.")
 
 
 commands = {
