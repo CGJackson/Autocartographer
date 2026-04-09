@@ -1,4 +1,5 @@
 import wave
+import os
 
 import discord
 from discord.ext import voice_recv
@@ -8,19 +9,29 @@ from discord.ext import voice_recv
 class RecordingManager():
     def __init__(self):
         self.live_files = {}
+        self.created_files = []
 
     def __enter__(self):
         return self
 
     def __exit__(self):
+        # close any files that remain open
         for file in self.live_files.values():
             file.close()
+        self.live_files = {}
+
+        # delete temporary files 
+        for file in self.created_files:
+            os.remove(file)
+        self.created_files = []
+
 
     def __getitem__(self, key):
         return self.live_files[key]
     
     def open(self,filename,voice_client):
         f = wave.open(filename,"wb")
+        self.created_files.append(filename)
         if voice_client in self.live_files:
             raise RuntimeError(f"There is already an open recording for client {voice_client}")
         self.live_files[voice_client] = f
@@ -192,6 +203,8 @@ class AutocartographerBot():
     def run(self,token):
         with RecordingManager() as self.recordings:
             self.client.run(token)
+
+        self.recordings = None
 
 
 if __name__ == "__main__":
