@@ -21,24 +21,34 @@ class RecordingManager():
         self.live_files = {}
 
         # delete temporary files 
-        for file in self.created_files:
-            os.remove(file)
-        self.created_files = []
+        for file_list in self.created_files.values():
+            for file in file_list:
+                os.remove(file)
+        self.created_files = {}
 
 
     def __getitem__(self, key):
         return self.live_files[key]
     
     def open(self,filename,voice_client):
-        f = wave.open(filename,"wb")
-        self.created_files.append(filename)
+
         if voice_client in self.live_files:
             raise RuntimeError(f"There is already an open recording for client {voice_client}")
+
+        f = wave.open(filename,"wb")
+        self.created_files.setdefault(voice_client,default=[]).append(filename)
+
         self.live_files[voice_client] = f
         return f
 
     def close(self,voice_client):
         self.live_files.pop(voice_client).close()
+
+    def get_client_archive(self,voice_client):
+        return self.created_files[voice_client]
+
+    def get_last_file_for_client(self,voice_client):
+        return self.get_channel_archive(voice_client)[-1]
 
 
 class VoiceChannelDirectory:
@@ -124,9 +134,13 @@ class AutocartographerBot():
             raise RuntimeError("listener is not currently listening")
 
         listener.stop_listening()
-        wav.close()
-        # TODO - Get audio file (from where?)
-        # TODO - pass file to generative model
+        self.recordings.close(listener)
+
+        recording_file_name = self.recordings.get_last_file_for_client(listener)
+
+        with wave.open(recording_file_name,"rb") as recording:
+            pass
+            # TODO - pass file to generative model
 
     async def stop_record(self,message : discord.Message):
         """
