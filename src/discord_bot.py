@@ -4,10 +4,6 @@ import discord
 from discord.ext import voice_recv
 
 
-intents = discord.Intents.default()
-intents.message_content = True
-
-client = discord.Client(intents=intents)
 
 class RecordingManager():
     def __init__(self):
@@ -79,116 +75,130 @@ class VoiceChannelDirectory:
             self.message = message
             super().__init__(self.message)
 
-
-active_voice_channels = VoiceChannelDirectory()
-
 def strip_mention(msg : str):
     return "".join(msg.split(client.user.mention)).strip()
 
-@client.event
-async def on_ready():
-    print(f'We have logged in as {client.user}')
+class AutocartographerBot():
+    def __init__(self):
+        self.active_voice_channels = VoiceChannelDirectory()
+        self.recordings = None
 
-async def record(message : discord.Message):
-    """
-    Has the bot start recording a voice channel containing
-    the author of the message, in order to generate a map.
-    """
-    wav = wave.open()
-    print("record not implimented")
+        self.intents = discord.Intents.default()
+        self.intents.message_content = True
 
-
-def end_recording_and_generate_map(listener:voice_recv.VoiceRecvClient):
-    if not listener.is_listening():
-        raise RuntimeError("listener is not currently listening")
-
-    listener.stop_listening()
-    wav.close()
-    # TODO - Get audio file (from where?)
-    # TODO - pass file to generative model
-
-async def stop_record(message : discord.Message):
-    """
-    Has the bot stop recording from a channel and
-    generate a map
-    """
-    listening_client = active_voice_channels.get_client_in_channel_with_user(message.user)
-    end_recording_and_generate_map(listening_client)
+        self.client = discord.Client(intents=self.intents)
+        self.commands = {
+            "listen" : self.record,
+            "stop" : self.stop_record,
+            "join" : self.join,
+            "leave" : self.leave
+        }
 
 
-async def join(message : discord.Message):
-    """
-    Adds the bot to a voice channel.
-    
-    Either uses a voice channel mentioned in the message or, 
-    if there isn't one, a voice mentioned after the join
-    command
-    """
-    if message.channel_mentions:
-        for channel in message.channel_mentions:
-            if isinstance(channel,discord.VoiceChannel):
-                await active_voice_channels.connect_to_channel(channel)
+    @client.event
+    async def on_ready(self):
+        print(f'We have logged in as {self.client.user}')
+
+    async def record(self,message : discord.Message):
+        """
+        Has the bot start recording a voice channel containing
+        the author of the message, in order to generate a map.
+        """
+        wav = wave.open()
+        print("record not implemented")
+
+
+    def end_recording_and_generate_map(self,listener:voice_recv.VoiceRecvClient):
+        if not listener.is_listening():
+            raise RuntimeError("listener is not currently listening")
+
+        listener.stop_listening()
+        wav.close()
+        # TODO - Get audio file (from where?)
+        # TODO - pass file to generative model
+
+    async def stop_record(self,message : discord.Message):
+        """
+        Has the bot stop recording from a channel and
+        generate a map
+        """
+        listening_client = self.active_voice_channels.get_client_in_channel_with_user(message.user)
+        self.end_recording_and_generate_map(listening_client)
+
+
+    async def join(self,message : discord.Message):
+        """
+        Adds the bot to a voice channel.
+        
+        Either uses a voice channel mentioned in the message or, 
+        if there isn't one, a voice mentioned after the join
+        command
+        """
+        if message.channel_mentions:
+            for channel in message.channel_mentions:
+                if isinstance(channel,discord.VoiceChannel):
+                    await self.active_voice_channels.connect_to_channel(channel)
+                    return
+        content = strip_mention(message.content)
+
+        for channel in message.guild.voice_channels:
+            if content.startswith("join " + channel.name):
+                await self.active_voice_channels.connect_to_channel(channel)
                 return
-    content = strip_mention(message.content)
 
-    for channel in message.guild.voice_channels:
-        if content.startswith("join " + channel.name):
-            await active_voice_channels.connect_to_channel(channel)
+        await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
+
+    async def leave(self,message : discord.Message):
+        """
+        Removes bot from a voice channel
+
+        Either uses a voice channel mentioned in the message or, 
+        if there isn't one, a voice mentioned after the leave
+        command
+        """
+        if message.channel_mentions:
+            for channel in message.channel_mentions:
+                if isinstance(channel,discord.VoiceChannel) and channel in self.active_voice_channels:
+                    await self.active_voice_channels.disconnect_from_channel(channel)
+                    return
+        content = strip_mention(message.content)
+
+        for channel in self.active_voice_channels:
+            if content.startswith("leave " + channel.name):
+                await self.active_voice_channels.disconnect_from_channel(channel)
+                return
+
+        await message.channel.send("I am sorry. I cannot determine which voice channel you want me to leave.\n It may be that I am not currently connected to the channel.")
+
+
+
+    @client.event
+    async def on_message(self,message):
+        if message.author == client.user:
+            return
+        
+        if not self.client.user.mentioned_in(message):
             return
 
-    await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
+        content = strip_mention(message.content)
 
-async def leave(message : discord.Message):
-    """
-    Removes bot from a voice channel
+        print(content)
 
-    Either uses a voice channel mentioned in the message or, 
-    if there isn't one, a voice mentioned after the leave
-    command
-    """
-    if message.channel_mentions:
-        for channel in message.channel_mentions:
-            if isinstance(channel,discord.VoiceChannel) and channel in active_voice_channels:
-                await active_voice_channels.disconnect_from_channel(channel)
-                return
-    content = strip_mention(message.content)
+        for (command,action) in self.commands.items():
+            if content.startswith(command):
+                await action(message)
+                break
 
-    for channel in active_voice_channels:
-        if content.startswith("leave " + channel.name):
-            await active_voice_channels.disconnect_from_channel(channel)
-            return
-
-    await message.channel.send("I am sorry. I cannot determine which voice channel you want me to leave.\n It may be that I am not currently connected to the channel.")
+    def run(self,token):
+        with RecordingManager() as self.recordings:
+            self.client.run(token)
 
 
-commands = {
-    "listen" : record,
-    "stop" : stop_record,
-    "join" : join,
-    "leave" : leave
-}
+if __name__ == "__main__":
+    with open("secrets/discord_token.txt","r") as token_file:
+        token = token_file.read()
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-    
-    if not client.user.mentioned_in(message):
-        return
+    bot = AutocartographerBot()
 
-    content = strip_mention(message.content)
+    bot.run(token)
 
-    print(content)
-
-    for (command,action) in commands.items():
-        if content.startswith(command):
-            await action(message)
-            break
-
-
-with open("secrets/discord_token.txt","r") as token_file:
-    token = token_file.read()
-
-
-with RecordingManager() as recordings:
-    client.run(token)
