@@ -2,7 +2,7 @@ import wave
 import os
 
 import discord
-from discord.ext import voice_recv
+from discord.ext import commands,voice_recv
 
 
 
@@ -107,25 +107,23 @@ class AutocartographerBot():
         self.intents = discord.Intents.default()
         self.intents.message_content = True
 
-        self.client = discord.Client(intents=self.intents)
-        self.commands = {
-            "listen" : self.record,
-            "stop" : self.stop_record,
-            "join" : self.join,
-            "leave" : self.leave
-        }
+        self.bot = commands.Bot(command_prefix=commands.when_mentioned, intents=self.intents)
+        self.bot.event(self.on_ready)
+        self.bot.add_command(self.record)
+        self.bot.add_command(self.stop_record)
+        self.bot.add_command(self.join)
+        self.bot.add_command(self.leave)
 
 
-    @client.event
     async def on_ready(self):
-        print(f'We have logged in as {self.client.user}')
+        print(f'We have logged in as {self.bot.user}')
 
-    async def record(self,message : discord.Message):
+    commands.command(name="listen")
+    async def record(self,ctx):
         """
         Has the bot start recording a voice channel containing
         the author of the message, in order to generate a map.
         """
-        wav = wave.open()
         print("record not implemented")
 
 
@@ -142,7 +140,8 @@ class AutocartographerBot():
             pass
             # TODO - pass file to generative model
 
-    async def stop_record(self,message : discord.Message):
+    commands.command(name="draw")
+    async def stop_record(self,ctx):
         """
         Has the bot stop recording from a channel and
         generate a map
@@ -151,7 +150,8 @@ class AutocartographerBot():
         self.end_recording_and_generate_map(listening_client)
 
 
-    async def join(self,message : discord.Message):
+    commands.command(name="join")
+    async def join(self,ctx,channel):
         """
         Adds the bot to a voice channel.
         
@@ -173,7 +173,8 @@ class AutocartographerBot():
 
         await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
 
-    async def leave(self,message : discord.Message):
+    commands.command(name="leave")
+    async def leave(self,ctx,channel):
         """
         Removes bot from a voice channel
 
@@ -197,26 +198,9 @@ class AutocartographerBot():
 
 
 
-    @client.event
-    async def on_message(self,message):
-        if message.author == client.user:
-            return
-        
-        if not self.client.user.mentioned_in(message):
-            return
-
-        content = strip_mention(message.content)
-
-        print(content)
-
-        for (command,action) in self.commands.items():
-            if content.startswith(command):
-                await action(message)
-                break
-
     def run(self,token):
         with RecordingManager() as self.recordings:
-            self.client.run(token)
+            self.bot.run(token)
 
         self.recordings = None
 
