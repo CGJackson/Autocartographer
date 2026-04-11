@@ -150,7 +150,7 @@ class AutocartographerBot(CommandBot):
         generate a map
         """
 
-        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.message.user)
+        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.author)
         listening_client.stop_listening()
         self.recordings.close(listening_client)
 
