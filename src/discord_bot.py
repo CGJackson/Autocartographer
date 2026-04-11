@@ -14,7 +14,7 @@ class RecordingManager():
     def __enter__(self):
         return self
 
-    def __exit__(self):
+    def __exit__(self,exc_type, exc_val, exc_tb):
         # close any files that remain open
         for file in self.live_files.values():
             file.close()
@@ -25,6 +25,7 @@ class RecordingManager():
             for file in file_list:
                 os.remove(file)
         self.created_files = {}
+        return False
 
 
     def __getitem__(self, key):
