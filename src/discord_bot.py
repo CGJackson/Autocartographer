@@ -4,7 +4,7 @@ import os
 import discord
 from discord.ext import commands,voice_recv
 
-
+from command_bot import CommandBot
 
 class RecordingManager():
     def __init__(self):
@@ -96,29 +96,28 @@ class VoiceChannelDirectory:
             self.message = message
             super().__init__(self.message)
 
-def strip_mention(msg : str):
-    return "".join(msg.split(client.user.mention)).strip()
 
-class AutocartographerBot():
+class AutocartographerBot(CommandBot):
     def __init__(self):
-        self.active_voice_channels = VoiceChannelDirectory()
-        self.recordings = None
 
         self.intents = discord.Intents.default()
         self.intents.message_content = True
 
-        self.bot = commands.Bot(command_prefix=commands.when_mentioned, intents=self.intents)
+        super().__init__(command_prefix=commands.when_mentioned, intents=self.intents)
+
+        self.active_voice_channels = VoiceChannelDirectory()
+        self.recordings = None
+
         self.bot.event(self.on_ready)
-        self.bot.add_command(self.record)
-        self.bot.add_command(self.stop_record)
-        self.bot.add_command(self.join)
-        self.bot.add_command(self.leave)
+        self.add_command_method("listen",AutocartographerBot.record)
+        self.add_command_method("draw",AutocartographerBot.stop_record)
+        self.add_command_method("join",AutocartographerBot.join)
+        self.add_command_method("leave",AutocartographerBot.leave)
 
 
     async def on_ready(self):
         print(f'We have logged in as {self.bot.user}')
 
-    commands.command(name="listen")
     async def record(self,ctx):
         """
         Has the bot start recording a voice channel containing
@@ -140,18 +139,16 @@ class AutocartographerBot():
             pass
             # TODO - pass file to generative model
 
-    commands.command(name="draw")
     async def stop_record(self,ctx):
         """
         Has the bot stop recording from a channel and
         generate a map
         """
-        listening_client = self.active_voice_channels.get_client_in_channel_with_user(message.user)
+        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.message.user)
         self.end_recording_and_generate_map(listening_client)
 
 
-    commands.command(name="join")
-    async def join(self,ctx,channel):
+    async def join(self,ctx,target_channel):
         """
         Adds the bot to a voice channel.
         
@@ -159,22 +156,16 @@ class AutocartographerBot():
         if there isn't one, a voice mentioned after the join
         command
         """
-        if message.channel_mentions:
-            for channel in message.channel_mentions:
-                if isinstance(channel,discord.VoiceChannel):
-                    await self.active_voice_channels.connect_to_channel(channel)
-                    return
-        content = strip_mention(message.content)
+        print(self,ctx,target_channel,flush=True)
 
-        for channel in message.guild.voice_channels:
-            if content.startswith("join " + channel.name):
+        for channel in ctx.guild.voice_channels:
+            if target_channel.strip() == channel.name.strip():
                 await self.active_voice_channels.connect_to_channel(channel)
                 return
 
-        await message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
+        await ctx.message.channel.send("I am sorry. I cannot determine which voice channel you want me to join")
 
-    commands.command(name="leave")
-    async def leave(self,ctx,channel):
+    async def leave(self,ctx,target_channel):
         """
         Removes bot from a voice channel
 
@@ -182,19 +173,13 @@ class AutocartographerBot():
         if there isn't one, a voice mentioned after the leave
         command
         """
-        if message.channel_mentions:
-            for channel in message.channel_mentions:
-                if isinstance(channel,discord.VoiceChannel) and channel in self.active_voice_channels:
-                    await self.active_voice_channels.disconnect_from_channel(channel)
-                    return
-        content = strip_mention(message.content)
 
         for channel in self.active_voice_channels:
-            if content.startswith("leave " + channel.name):
+            if target_channel.strip() == channel.name.strip():
                 await self.active_voice_channels.disconnect_from_channel(channel)
                 return
 
-        await message.channel.send("I am sorry. I cannot determine which voice channel you want me to leave.\n It may be that I am not currently connected to the channel.")
+        await ctx.message.channel.send("I am sorry. I cannot determine which voice channel you want me to leave.\n It may be that I am not currently connected to the channel.")
 
 
 
