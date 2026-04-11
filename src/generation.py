@@ -22,6 +22,13 @@ class Model:
     def generate_from_voice(self,wave_file):
         return self.generate_from_text(parse_voice(wave_file))
 
+    def extract_image_data(self,response):
+        return  [
+            base64.b64decode(output.result)
+            for output in response.output
+            if output.type == "image_generation_call"
+        ]
+
 
 if __name__ == "__main__":
 
@@ -31,13 +38,9 @@ if __name__ == "__main__":
 
     print(list(response.output))
 
-    image_data = [
-        output.result
-        for output in response.output
-        if output.type == "image_generation_call"
-    ]
-    
+    image_data = gpt_model.extract_image_data(response)
+        
     if image_data:
         for (i,img) in enumerate(image_data):
             with open(f"outputs/tavern{i}.png", "wb") as f:
-                f.write(base64.b64decode(img))
+                f.write(img)

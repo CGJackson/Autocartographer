@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands,voice_recv
 
 from command_bot import CommandBot
+import generation
 
 class RecordingManager():
     def __init__(self):
@@ -111,9 +112,11 @@ class AutocartographerBot(CommandBot):
 
         self.bot.event(self.on_ready)
         self.add_command_method("listen",AutocartographerBot.record)
-        self.add_command_method("draw",AutocartographerBot.stop_record)
+        self.add_command_method("draw",AutocartographerBot.complete_recording)
         self.add_command_method("join",AutocartographerBot.join)
         self.add_command_method("leave",AutocartographerBot.leave)
+
+        self.generation_model = generation.Model()
 
 
     async def on_ready(self):
@@ -127,29 +130,36 @@ class AutocartographerBot(CommandBot):
         print("record not implemented")
 
 
-    def end_recording_and_generate_map(self,listener:voice_recv.VoiceRecvClient):
-        if not listener.is_listening():
-            raise RuntimeError("listener is not currently listening")
+    def generate_map(self,recording_filename : str):
+        with wave.open(recording_filename,"rb") as recording:
+            response = self.generation_model.generate_from_voice(recording)
+        image_data = self.generation_model.extract_image_data(response)
 
-        listener.stop_listening()
-        self.recordings.close(listener)
+        recording_prefix = ".".join(recording_filename.split(".")[:-1])
 
-        recording_file_name = self.recordings.get_last_file_for_client(listener)
+        result_filename = f"outputs/{recording_prefix}.png"
+        
+        with open(result_filename, "wb") as f:
+            f.write(image_data[0])
 
-        with wave.open(recording_file_name,"rb") as recording:
-            pass
-            # TODO - pass file to generative model
+        return result_filename
 
-    async def stop_record(self,ctx):
+    async def complete_recording(self,ctx : commands.Context):
         """
         Has the bot stop recording from a channel and
         generate a map
         """
+
         listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.message.user)
-        self.end_recording_and_generate_map(listening_client)
+        listening_client.stop_listening()
+        self.recordings.close(listening_client)
 
+        recording_filename = self.recordings.get_last_file_for_client(listening_client)
+        map_file = r"tests/test_data/slough_map.png"#= self.generate_map(recording_filename)
 
-    async def join(self,ctx,target_channel):
+        await ctx.author.send(file=discord.File(map_file))
+
+    async def join(self,ctx : commands.Context,target_channel):
         """
         Adds the bot to a voice channel.
         
