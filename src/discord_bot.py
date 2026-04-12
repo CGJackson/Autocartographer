@@ -1,5 +1,6 @@
 import wave
 import os
+from uuid import uuid1
 
 import discord
 from discord.ext import commands,voice_recv
@@ -10,7 +11,7 @@ import generation
 class RecordingManager():
     def __init__(self):
         self.live_files = {}
-        self.created_files = []
+        self.created_files = {}
 
     def __enter__(self):
         return self
@@ -29,27 +30,27 @@ class RecordingManager():
         return False
 
 
-    def __getitem__(self, key):
+    def __getitem__(self, key : voice_recv.VoiceRecvClient):
         return self.live_files[key]
     
-    def open(self,filename,voice_client):
+    def open(self,filename : str,voice_client : voice_recv.VoiceRecvClient):
 
         if voice_client in self.live_files:
             raise RuntimeError(f"There is already an open recording for client {voice_client}")
 
         f = wave.open(filename,"wb")
-        self.created_files.setdefault(voice_client,default=[]).append(filename)
+        self.created_files.setdefault(voice_client,[]).append(filename)
 
         self.live_files[voice_client] = f
         return f
 
-    def close(self,voice_client):
+    def close(self,voice_client :voice_recv.VoiceRecvClient):
         self.live_files.pop(voice_client).close()
 
-    def get_client_archive(self,voice_client):
+    def get_client_archive(self,voice_client : voice_recv.VoiceRecvClient):
         return self.created_files[voice_client]
 
-    def get_last_file_for_client(self,voice_client):
+    def get_last_file_for_client(self,voice_client: voice_recv.VoiceRecvClient):
         return self.get_channel_archive(voice_client)[-1]
 
 
@@ -112,6 +113,7 @@ class AutocartographerBot(CommandBot):
 
         self.bot.event(self.on_ready)
         self.add_command_method("listen",AutocartographerBot.record)
+        self.add_command_method("stop",AutocartographerBot.stop_recording)
         self.add_command_method("draw",AutocartographerBot.complete_recording)
         self.add_command_method("join",AutocartographerBot.join)
         self.add_command_method("leave",AutocartographerBot.leave)
@@ -127,7 +129,13 @@ class AutocartographerBot(CommandBot):
         Has the bot start recording a voice channel containing
         the author of the message, in order to generate a map.
         """
-        print("record not implemented")
+        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.author)
+
+        filename = "recordings/" + str(uuid1()) + ".wav~"
+
+        recording_file = self.recordings.open(filename,listening_client)
+
+        listening_client.listen(voice_recv.WaveSink(recording_file))
 
 
     def generate_map(self,recording_filename : str):
@@ -144,15 +152,19 @@ class AutocartographerBot(CommandBot):
 
         return result_filename
 
+    async def stop_recording(self, ctx : commands.Context):
+        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.author)
+        listening_client.stop_listening()
+        self.recordings.close(listening_client)
+        return listening_client
+
     async def complete_recording(self,ctx : commands.Context):
         """
         Has the bot stop recording from a channel and
         generate a map
         """
 
-        listening_client = self.active_voice_channels.get_client_in_channel_with_user(ctx.author)
-        listening_client.stop_listening()
-        self.recordings.close(listening_client)
+        listening_client = await self.stop_recording(ctx)
 
         recording_filename = self.recordings.get_last_file_for_client(listening_client)
         map_file = r"tests/test_data/slough_map.png"#= self.generate_map(recording_filename)
